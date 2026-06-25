@@ -1,6 +1,10 @@
-# 🎬 YouTube RAG Chatbot — Phase 3 (Groq Cloud)
+# 🎬 YouTube RAG Chatbot
 
-A production-ready **Retrieval-Augmented Generation (RAG)** chatbot that answers questions about any YouTube video using its transcript. Powered by **Groq Cloud** for ultra-fast LLM inference — no local GPU, no Ollama, fully cloud-deployable.
+An AI-powered YouTube RAG Chatbot built with React, FastAPI, LangChain, FAISS, HuggingFace Embeddings, YouTube Transcript API, and Google Gemini.
+
+* Google Gemini is the LLM provider.
+* Gemini generates answers from retrieved context.
+* Gemini is used for conversational reasoning.
 
 ---
 
@@ -9,14 +13,14 @@ A production-ready **Retrieval-Augmented Generation (RAG)** chatbot that answers
 | Feature | Details |
 |---|---|
 | **YouTube URL support** | Accepts full URLs (`youtube.com/watch?v=…`, `youtu.be/…`) or bare Video IDs |
-| **Groq Cloud LLM** | Ultra-fast inference via `llama-3.1-8b-instant` or any Groq model |
+| **Google Gemini LLM** | Ultra-fast inference via `gemini-1.5-flash` or any Gemini model |
 | **Anti-hallucination prompts** | System + Human chat template; LLM strictly answers from transcript only |
-| **Multi-model support** | Switch between LLaMA 3.3 70B, LLaMA 3.1 8B, Gemma 2, Mixtral via `.env` |
+| **Multi-model support** | Switch between Gemini 1.5 Pro, Gemini 1.5 Flash via `.env` |
 | **FastAPI backend** | Production-grade REST API with Swagger UI at `/docs` |
 | **Chat history** | Full conversation history preserved within the browser session |
 | **Retrieved context** | Expandable panel shows the exact transcript chunks used per answer |
 | **Smart LRU caching** | Vector store built once per video; reused across all follow-up questions |
-| **Structured logging** | ISO-8601 timestamps, request IDs, token usage per Groq response |
+| **Structured logging** | ISO-8601 timestamps, request IDs, token usage per Gemini response |
 | **Docker + Render ready** | Multi-stage Dockerfile, `render.yaml` blueprint included |
 | **Environment-driven config** | All settings via `.env` — zero hardcoded secrets |
 
@@ -24,16 +28,14 @@ A production-ready **Retrieval-Augmented Generation (RAG)** chatbot that answers
 
 ## 🏗️ Architecture
 
-### Phase 3 — Groq Cloud (Current)
-
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         YouTube RAG Chatbot                         │
 ├────────────────┬────────────────────────────────────────────────────┤
-│  Streamlit UI  │            FastAPI Backend (production)            │
-│   (prototype)  │                                                    │
-│   app.py       │  POST /ask          GET /health      GET /models   │
-│   rag.py       │       │                                            │
+│ React Frontend │            FastAPI Backend (production)            │
+│ React Frontend │                                                    │
+│ RAG Pipeline   │  POST /ask          GET /health      GET /models   │
+│ Google Gemini  │                                                    │
 └────────┬───────┴──────────────────┬───────────────────────────────-─┘
          │                          │
          ▼                          ▼
@@ -43,28 +45,28 @@ A production-ready **Retrieval-Augmented Generation (RAG)** chatbot that answers
 │  YouTube URL/ID                                                     │
 │       │                                                             │
 │       ▼                                                             │
-│  extract_video_id()   ← URL parsing + validation                   │
+│  extract_video_id()   ← URL parsing + validation                    │
 │       │                                                             │
 │       ▼                                                             │
-│  YouTubeTranscriptApi ← Fetch English transcript                   │
+│  YouTubeTranscriptApi ← Fetch English transcript                    │
 │       │                                                             │
 │       ▼                                                             │
-│  RecursiveCharacterTextSplitter  ← chunk_size=1000, overlap=200    │
+│  RecursiveCharacterTextSplitter  ← chunk_size=1000, overlap=200     │
 │       │                                                             │
 │       ▼                                                             │
-│  HuggingFaceEmbeddings           ← all-MiniLM-L6-v2 (local, free) │
+│  HuggingFaceEmbeddings           ← all-MiniLM-L6-v2 (local, free)   │
 │       │                                                             │
 │       ▼                                                             │
-│  FAISS.from_documents()          ← In-memory index (LRU cache)     │
+│  FAISS.from_documents()          ← In-memory index (LRU cache)      │
 │       │                                                             │
 │       ▼                                                             │
-│  similarity_search(k=4)          ← Top-4 relevant chunks           │
+│  similarity_search(k=4)          ← Top-4 relevant chunks            │
 │       │                                                             │
 │       ▼                                                             │
-│  System + Human Prompt           ← Anti-hallucination template     │
+│  System + Human Prompt           ← Anti-hallucination template      │
 │       │                                                             │
 │       ▼                                                             │
-│  ChatGroq (Groq Cloud ⚡)        ← llama-3.1-8b-instant (default) │
+│  ChatGoogleGenerativeAI (Google Gemini ⚡) ← gemini-1.5-flash (default) 
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,7 +75,7 @@ A production-ready **Retrieval-Augmented Generation (RAG)** chatbot that answers
 ```
 AI_Youtube_Chatbot/
 ├── app.py                          # Streamlit prototype UI
-├── rag.py                          # Streamlit RAG pipeline (Groq-powered)
+├── rag.py                          # Streamlit RAG pipeline (Gemini-powered)
 ├── run.py                          # FastAPI dev server launcher
 ├── requirements.txt                # Root deps (Streamlit prototype)
 ├── Dockerfile                      # Multi-stage production Docker build
@@ -83,7 +85,7 @@ AI_Youtube_Chatbot/
     ├── main.py                     # FastAPI app, routes, middleware
     ├── config.py                   # Centralised settings (pydantic-settings)
     ├── rag.py                      # RAGService orchestration facade
-    ├── requirements.txt            # Production deps (FastAPI + Groq)
+    ├── requirements.txt            # Production deps (FastAPI + Gemini)
     ├── .env                        # Your secrets (gitignored)
     ├── .env.example                # Template — copy to .env
     │
@@ -91,7 +93,7 @@ AI_Youtube_Chatbot/
     │   ├── transcript_service.py   # YouTube transcript fetch + splitting
     │   ├── vector_store_service.py # FAISS build + LRU cache
     │   ├── retrieval_service.py    # Similarity search
-    │   └── llm_service.py         # ChatGroq client + error handling
+    │   └── llm_service.py         # ChatGoogleGenerativeAI client + error handling
     │
     ├── models/
     │   ├── request_models.py       # Pydantic request schemas
@@ -109,7 +111,7 @@ AI_Youtube_Chatbot/
 ### Prerequisites
 
 - Python 3.11+
-- A free Groq API key → [console.groq.com](https://console.groq.com)
+- A free Google Gemini API key → [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 
 ### 1. Clone & install dependencies
 
@@ -134,10 +136,10 @@ Edit `backend/.env`:
 
 ```env
 # Required
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_API_KEY=AIzaSy...
 
 # Optional — defaults shown
-LLM_MODEL_NAME=llama-3.1-8b-instant
+LLM_MODEL_NAME=gemini-1.5-flash
 LLM_TEMPERATURE=0.0
 LLM_MAX_TOKENS=1024
 ```
@@ -198,32 +200,15 @@ Ask a question about a YouTube video.
   "api": "YouTube RAG Chatbot",
   "version": "3.0.0",
   "environment": "production",
-  "llm_provider": "Groq Cloud",
-  "llm_model": "llama-3.1-8b-instant"
+  "llm_provider": "Google Gemini",
+  "llm_model": "gemini-1.5-flash"
 }
 ```
 
 ### `GET /models`
 
-Returns the full catalogue of supported Groq models with metadata.
+Returns the full catalogue of supported Gemini models with metadata.
 
----
-
-## 🤖 Supported Groq Models
-
-| Model ID | Params | Context | Speed | Quality |
-|---|---|---|---|---|
-| `llama-3.1-8b-instant` | 8B | 128k | ⚡ Fastest | Good |
-| `llama-3.3-70b-versatile` | 70B | 128k | Medium | ⭐ Best |
-| `llama3-8b-8192` | 8B | 8k | Fast | Good |
-| `llama3-70b-8192` | 70B | 8k | Medium | High |
-| `gemma2-9b-it` | 9B | 8k | Fast | Good |
-| `gemma-7b-it` | 7B | 8k | Fast | Good |
-| `mixtral-8x7b-32768` | 47B (MoE) | 32k | Medium | High |
-
-Switch models by setting `LLM_MODEL_NAME` in `backend/.env` and restarting the server.
-
----
 
 ## ⚙️ Configuration Reference
 
@@ -231,8 +216,8 @@ All settings are read from `backend/.env` (or OS environment variables):
 
 | Variable | Default | Description |
 |---|---|---|
-| `GROQ_API_KEY` | **required** | Groq Cloud API key |
-| `LLM_MODEL_NAME` | `llama-3.1-8b-instant` | Groq model ID |
+| `GOOGLE_API_KEY` | **required** | Google Gemini API key |
+| `LLM_MODEL_NAME` | `gemini-1.5-flash` | Gemini model ID |
 | `LLM_TEMPERATURE` | `0.0` | Sampling temp (0=deterministic) |
 | `LLM_MAX_TOKENS` | `1024` | Max tokens per response |
 | `LLM_TIMEOUT` | `60` | API timeout in seconds |
@@ -256,8 +241,8 @@ docker build -t yt-rag-chatbot .
 
 # Run (pass API key as env var)
 docker run -p 8000:8000 \
-  -e GROQ_API_KEY=gsk_xxx \
-  -e LLM_MODEL_NAME=llama-3.1-8b-instant \
+  -e GOOGLE_API_KEY=AIzaSy... \
+  -e LLM_MODEL_NAME=gemini-1.5-flash \
   yt-rag-chatbot
 
 # Or mount your .env file
@@ -268,12 +253,12 @@ docker run -p 8000:8000 --env-file backend/.env yt-rag-chatbot
 
 ## ☁️ Deployment
 
-### Render (recommended)
+### Render
 
 1. Push repo to GitHub
 2. Go to [render.com](https://render.com) → **New → Blueprint**
 3. Select your repo — Render auto-detects `render.yaml`
-4. Set `GROQ_API_KEY` in the Render dashboard (Environment tab)
+4. Set `GOOGLE_API_KEY` in the Render dashboard (Environment tab)
 5. Deploy ✅
 
 ### Railway
@@ -288,18 +273,18 @@ railway init
 railway up
 
 # Set environment variable
-railway variables set GROQ_API_KEY=gsk_xxx
+railway variables set GOOGLE_API_KEY=AIzaSy...
 ```
 
 See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for step-by-step guides for both platforms.
 
 ---
 
-## 🔄 Migration: Ollama → Groq
+## 🔄 Migration: Ollama → Gemini
 
-| | Phase 2 (Ollama) | Phase 3 (Groq) |
+| | Phase 2 (Ollama) | Phase 3 (Gemini) |
 |---|---|---|
-| **LLM Provider** | Local Ollama | Groq Cloud API |
+| **LLM Provider** | Local Ollama | Google Gemini API |
 | **Deployment** | Local only | Any cloud platform |
 | **GPU required** | Yes (for speed) | No |
 | **Setup** | Install Ollama + pull model | Set one env var |
@@ -319,7 +304,7 @@ The API returns structured JSON errors for all failure modes:
 ```json
 {
   "error": "LLM_CONNECTION_ERROR",
-  "detail": "Cannot reach the Groq API. Check your internet connection.",
+  "detail": "Cannot reach the Google Gemini API. Check your internet connection.",
   "status_code": 503
 }
 ```
@@ -330,7 +315,7 @@ The API returns structured JSON errors for all failure modes:
 | `TRANSCRIPT_DISABLED` | 422 | Video creator disabled captions |
 | `TRANSCRIPT_NOT_FOUND` | 404 | No English transcript available |
 | `VECTOR_STORE_ERROR` | 500 | FAISS build or search failure |
-| `LLM_CONNECTION_ERROR` | 503 | Groq unreachable / invalid API key / timeout |
+| `LLM_CONNECTION_ERROR` | 503 | Gemini unreachable / invalid API key / timeout |
 | `LLM_GENERATION_ERROR` | 500 | Rate limit / bad model / empty response |
 
 ---
@@ -339,13 +324,22 @@ The API returns structured JSON errors for all failure modes:
 
 - [x] Phase 1 — Streamlit prototype + Ollama
 - [x] Phase 2 — FastAPI backend + service architecture
-- [x] Phase 3 — Groq Cloud migration + deployment config
-- [ ] Phase 4 — React frontend (Next.js / Vite)
-- [ ] Phase 5 — Persistent vector store (Redis / Pinecone)
-- [ ] Phase 6 — Auth + multi-user support
+- [x] Phase 3 — Google Gemini migration + deployment config
+- [x] Phase 4 — React frontend (Next.js / Vite)
+- [x] Phase 5 — Persistent vector store (Redis / Pinecone)
+- [x] Phase 6 — Auth + multi-user support
 
 ---
 
 ## 👤 Author
 
-**Harshit Malviya**
+Harshit Malviya
+
+Aspiring AI/ML Engineer passionate about:
+- Generative AI
+- RAG Systems
+- LLM Applications
+- Full-Stack AI Development
+
+GitHub: https://github.com/Harshit54-stack
+LinkedIn: www.linkedin.com/in/harshit-malviya-0422a4324
