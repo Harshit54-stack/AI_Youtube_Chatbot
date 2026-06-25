@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# render.yaml — Render.com deployment blueprint
+#
+# Deploy to Render:
+#   1. Push this repo to GitHub
+#   2. Go to https://render.com → New → Blueprint
+#   3. Select your repo — Render auto-detects this file
+#   4. Set environment variables in the Render dashboard (or via envVarGroups)
+#
+# Docs: https://render.com/docs/blueprint-spec
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: yt-rag-chatbot-api
+    runtime: python
+    plan: free               # upgrade to "starter" for better performance
+    region: oregon           # choose closest to your users
+
+    # ── Build configuration ────────────────────────────────────────────────
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1
+
+    # ── Auto-deploy ────────────────────────────────────────────────────────
+    autoDeploy: true         # redeploy automatically on every git push
+
+    # ── Health check ───────────────────────────────────────────────────────
+    healthCheckPath: /health
+
+    # ── Environment variables ──────────────────────────────────────────────
+    # IMPORTANT: Set GROQ_API_KEY in the Render dashboard (not here).
+    # Never commit real secrets to render.yaml.
+    envVars:
+      # ── Required — set in Render dashboard ────────────────────────────
+      - key: GROQ_API_KEY
+        sync: false          # must be set manually in Render UI
+
+      # ── LLM Configuration ─────────────────────────────────────────────
+      - key: LLM_MODEL_NAME
+        value: llama-3.1-8b-instant
+      - key: LLM_TEMPERATURE
+        value: "0.0"
+      - key: LLM_MAX_TOKENS
+        value: "1024"
+      - key: LLM_TIMEOUT
+        value: "60"
+      - key: LLM_MAX_RETRIES
+        value: "2"
+
+      # ── Embeddings ────────────────────────────────────────────────────
+      - key: EMBEDDING_MODEL_NAME
+        value: sentence-transformers/all-MiniLM-L6-v2
+
+      # ── RAG Pipeline ──────────────────────────────────────────────────
+      - key: CHUNK_SIZE
+        value: "1000"
+      - key: CHUNK_OVERLAP
+        value: "200"
+      - key: RETRIEVER_K
+        value: "4"
+      - key: VECTOR_STORE_CACHE_SIZE
+        value: "10"          # smaller cache on free tier (512 MB RAM)
+
+      # ── API Server ────────────────────────────────────────────────────
+      # Update CORS_ORIGINS with your React frontend URL after deploying it
+      - key: CORS_ORIGINS
+        value: '["https://your-react-app.vercel.app","http://localhost:5173"]'
+
+      # ── Deployment ────────────────────────────────────────────────────
+      - key: LOG_LEVEL
+        value: INFO
+      - key: APP_ENV
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
