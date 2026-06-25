@@ -10,8 +10,8 @@
 #
 # Run:
 #   docker run -p 8000:8000 \
-#     -e GROQ_API_KEY=gsk_xxx \
-#     -e LLM_MODEL_NAME=llama-3.1-8b-instant \
+#     -e GOOGLE_API_KEY=AIzaSy... \
+#     -e LLM_MODEL_NAME=gemini-1.5-flash \
 #     yt-rag-chatbot
 #
 # Or with a .env file:
@@ -35,6 +35,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy and install only the dependency file first (Docker layer caching)
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # ── Stage 2: Production runtime ───────────────────────────────────────────────
