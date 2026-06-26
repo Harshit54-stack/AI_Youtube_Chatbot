@@ -100,8 +100,8 @@ class Settings(BaseSettings):
 
     # ── Embeddings ────────────────────────────────────────────────────────────
     EMBEDDING_MODEL_NAME: str = Field(
-        default="sentence-transformers/all-MiniLM-L6-v2",
-        description="HuggingFace sentence-transformer model for local embeddings.",
+        default="models/gemini-embedding-2",
+        description="Google Generative AI embedding model.",
     )
 
     # ── Text splitting ────────────────────────────────────────────────────────

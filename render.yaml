@@ -28,16 +28,16 @@ services:
     healthCheckPath: /health
 
     # ── Environment variables ──────────────────────────────────────────────
-    # IMPORTANT: Set GROQ_API_KEY in the Render dashboard (not here).
+    # IMPORTANT: Set GOOGLE_API_KEY in the Render dashboard (not here).
     # Never commit real secrets to render.yaml.
     envVars:
       # ── Required — set in Render dashboard ────────────────────────────
-      - key: GROQ_API_KEY
+      - key: GOOGLE_API_KEY
         sync: false          # must be set manually in Render UI
 
       # ── LLM Configuration ─────────────────────────────────────────────
       - key: LLM_MODEL_NAME
-        value: llama-3.1-8b-instant
+        value: gemini-2.5-flash
       - key: LLM_TEMPERATURE
         value: "0.0"
       - key: LLM_MAX_TOKENS
@@ -49,7 +49,7 @@ services:
 
       # ── Embeddings ────────────────────────────────────────────────────
       - key: EMBEDDING_MODEL_NAME
-        value: sentence-transformers/all-MiniLM-L6-v2
+        value: models/gemini-embedding-2
 
       # ── RAG Pipeline ──────────────────────────────────────────────────
       - key: CHUNK_SIZE

@@ -86,7 +86,7 @@ frontend/
 - 🎥 **YouTube URL input** with real-time validation and thumbnail preview
 - 💬 **Chat interface** — user bubbles right, AI bubbles left
 - 📚 **Source citations** — expand/collapse retrieved transcript chunks
-- ⚡ **Groq-powered** — near-instant AI responses via LLaMA 3
+- ⚡ **Gemini-powered** — near-instant AI responses via Gemini
 - 🔄 **Chat persistence** — messages and last video URL saved to `localStorage`
 - 📋 **Copy button** — hover AI messages to copy the answer
 - ❌ **Error handling** — invalid URL, API offline, empty question, backend errors

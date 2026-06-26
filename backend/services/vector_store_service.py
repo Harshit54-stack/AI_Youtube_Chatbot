@@ -3,7 +3,7 @@ vector_store_service.py — Embedding generation and FAISS vector store manageme
 
 Responsibilities
 ----------------
-1. Hold the singleton HuggingFaceEmbeddings model (loaded once at startup).
+1. Hold the singleton GoogleGenerativeAIEmbeddings model (loaded once at startup).
 2. Build FAISS vector stores from Document chunks.
 3. Cache built vector stores in a plain dict keyed by video_id so that
    follow-up questions on the same video never re-embed the transcript.
@@ -19,7 +19,7 @@ from collections import OrderedDict
 from typing import List
 
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.documents import Document
 
 from backend.utils.exceptions import VectorStoreError
@@ -28,7 +28,7 @@ from backend.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # ── Singletons ─────────────────────────────────────────────────────────────────
-_embeddings: HuggingFaceEmbeddings | None = None
+_embeddings: GoogleGenerativeAIEmbeddings | None = None
 
 # Ordered dict acts as an LRU cache: video_id → FAISS
 _store_cache: OrderedDict[str, FAISS] = OrderedDict()
@@ -37,7 +37,7 @@ _cache_max_size: int = 20
 
 def initialise_embeddings(model_name: str, cache_size: int = 20) -> None:
     """
-    Load the HuggingFace embedding model into memory.
+    Load the Google Generative AI embedding model into memory.
 
     Call this exactly once from the FastAPI lifespan context manager
     before the server starts serving requests. Subsequent calls are no-ops.
@@ -45,8 +45,8 @@ def initialise_embeddings(model_name: str, cache_size: int = 20) -> None:
     Parameters
     ----------
     model_name : str
-        HuggingFace model identifier.
-        e.g. 'sentence-transformers/all-MiniLM-L6-v2'
+        Google Generative AI model identifier.
+        e.g. 'models/gemini-embedding-2'
     cache_size : int
         Maximum number of video vector stores to keep in memory.
     """
@@ -56,13 +56,17 @@ def initialise_embeddings(model_name: str, cache_size: int = 20) -> None:
         logger.debug("Embedding model already initialised — skipping.")
         return
 
-    logger.info("Loading embedding model: '%s' …", model_name)
-    _embeddings = HuggingFaceEmbeddings(model_name=model_name)
+    logger.info("Loading Google Generative AI embedding model: '%s' …", model_name)
+    from backend.config import settings
+    _embeddings = GoogleGenerativeAIEmbeddings(
+        model=model_name,
+        google_api_key=settings.GOOGLE_API_KEY,
+    )
     _cache_max_size = cache_size
     logger.info("Embedding model loaded. Vector store cache size: %d.", cache_size)
 
 
-def _get_embeddings() -> HuggingFaceEmbeddings:
+def _get_embeddings() -> GoogleGenerativeAIEmbeddings:
     """Return the singleton embedding model; raise if not yet initialised."""
     if _embeddings is None:
         raise VectorStoreError(

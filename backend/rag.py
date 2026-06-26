@@ -85,7 +85,7 @@ class RAGService:
         LLMGenerationError
             Gemini API returned an error.
         """
-        # ── Stage 1 : Resolve video ID ────────────────────────────────────
+        #Stage 1 : Resolve video ID 
         video_id = extract_video_id(video_url)
         logger.info(
             "RAGService.ask | video_id='%s' | model='%s' | question='%s'",
@@ -94,20 +94,20 @@ class RAGService:
             question[:80],
         )
 
-        # ── Stage 2 : Fetch transcript + split into chunks ─────────────────
+        # Stage 2 : Fetch transcript + split into chunks
         chunks = fetch_and_split_transcript(
             video_id=video_id,
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
         )
 
-        # ── Stage 3 : Build / retrieve cached FAISS vector store ──────────
+        #Stage 3 : Build / retrieve cached FAISS vector store
         vector_store: FAISS = get_or_build_vector_store(
             video_id=video_id,
             chunks=chunks,
         )
 
-        # ── Stage 4 : Retrieve top-k relevant chunks ───────────────────────
+        #Stage 4 : Retrieve top-k relevant chunks
         retrieved_docs: List[Document] = retrieve_relevant_chunks(
             question=question,
             vector_store=vector_store,

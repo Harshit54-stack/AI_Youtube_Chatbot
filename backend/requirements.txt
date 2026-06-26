@@ -28,7 +28,6 @@ langchain>=0.2.0
 langchain-core>=0.2.0
 langchain-community>=0.2.0          # required for FAISS vectorstore
 langchain-text-splitters>=0.2.0
-langchain-huggingface>=0.0.3
 
 # ── Google Gemini LLM (replaces Groq) ─────────────────────────────────────────
 # langchain-google-genai: LangChain integration for Google Gemini
@@ -36,7 +35,7 @@ langchain-huggingface>=0.0.3
 langchain-google-genai>=2.0.0
 
 # ── Embeddings + Vector Store ─────────────────────────────────────────────────
-sentence-transformers>=3.0.0   # local HuggingFace embeddings (free, no API key)
+
 faiss-cpu>=1.8.0               # FAISS vector similarity search (CPU build)
 
 # ── YouTube Transcript ────────────────────────────────────────────────────────

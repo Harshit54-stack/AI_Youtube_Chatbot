@@ -20,7 +20,7 @@ Step-by-step deployment instructions for Render, Railway, and Docker.
 
 Before deploying, ensure you have:
 
-- [ ] A **Groq API key** — free at [console.groq.com](https://console.groq.com)
+- [ ] A **Google Gemini API key** — free at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 - [ ] The project pushed to a **GitHub repository**
 - [ ] Python 3.11+ (for local testing only)
 
@@ -46,8 +46,8 @@ After the service is created:
 1. Go to your service in the Render dashboard.
 2. Click **Environment** tab.
 3. Add a **new secret environment variable**:
-   - Key: `GROQ_API_KEY`
-   - Value: `gsk_xxxxxxxxxxxx...` (your key from console.groq.com)
+   - Key: `GOOGLE_API_KEY`
+   - Value: `AIzaSy......` (your key from aistudio.google.com/app/apikey)
 4. Click **Save Changes** → the service will automatically redeploy.
 
 ### 2c. Verify deployment
@@ -64,8 +64,8 @@ Expected response:
   "api": "YouTube RAG Chatbot",
   "version": "3.0.0",
   "environment": "production",
-  "llm_provider": "Groq Cloud",
-  "llm_model": "llama-3.1-8b-instant"
+  "llm_provider": "Google Gemini",
+  "llm_model": "gemini-1.5-flash"
 }
 ```
 
@@ -130,10 +130,10 @@ railway up
 
 ```bash
 # Required
-railway variables set GROQ_API_KEY=gsk_xxxxxxxxxxxx...
+railway variables set GOOGLE_API_KEY=AIzaSy......
 
 # Optional — configure model
-railway variables set LLM_MODEL_NAME=llama-3.1-8b-instant
+railway variables set LLM_MODEL_NAME=gemini-1.5-flash
 railway variables set LLM_TEMPERATURE=0.0
 railway variables set LLM_MAX_TOKENS=1024
 railway variables set LLM_TIMEOUT=60
@@ -189,8 +189,8 @@ The multi-stage Dockerfile produces a lean ~350 MB image using Python 3.11-slim.
 docker run -d \
   --name yt-rag-chatbot \
   -p 8000:8000 \
-  -e GROQ_API_KEY=gsk_xxxxxxxxxxxx... \
-  -e LLM_MODEL_NAME=llama-3.1-8b-instant \
+  -e GOOGLE_API_KEY=AIzaSy...... \
+  -e LLM_MODEL_NAME=gemini-1.5-flash \
   -e APP_ENV=production \
   -e LOG_LEVEL=INFO \
   --restart unless-stopped \
@@ -263,17 +263,17 @@ Set these in your deployment platform's dashboard or in `backend/.env`:
 
 ```env
 # ── REQUIRED ───────────────────────────────────────────────────────────────────
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_API_KEY=AIzaSy...
 
 # ── LLM Configuration ──────────────────────────────────────────────────────────
-LLM_MODEL_NAME=llama-3.1-8b-instant    # fastest; use llama-3.3-70b-versatile for quality
+LLM_MODEL_NAME=gemini-1.5-flash    # fastest; use gemini-1.5-pro for quality
 LLM_TEMPERATURE=0.0                     # 0 = deterministic (best for RAG)
 LLM_MAX_TOKENS=1024                     # max tokens in response
 LLM_TIMEOUT=60                          # seconds before timeout
 LLM_MAX_RETRIES=2                       # auto-retries on transient errors
 
-# ── Embeddings (local, no API key needed) ──────────────────────────────────────
-EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+# ── Embeddings (Google API, uses same API key) ──────────────────────────────────────
+EMBEDDING_MODEL_NAME=models/gemini-embedding-2
 
 # ── RAG Pipeline ───────────────────────────────────────────────────────────────
 CHUNK_SIZE=1000
@@ -299,7 +299,7 @@ After deploying, verify each item:
 - [ ] `POST /ask` with a test video returns a grounded answer
 - [ ] Swagger UI loads at `/docs`
 - [ ] Logs show requests with request IDs and latency
-- [ ] `GROQ_API_KEY` is set in the platform dashboard (not in code)
+- [ ] `GOOGLE_API_KEY` is set in the platform dashboard (not in code)
 - [ ] CORS origins include your frontend URL
 - [ ] `APP_ENV` is set to `production`
 
@@ -318,21 +318,21 @@ curl -X POST https://your-service.onrender.com/ask \
 
 ## 7. Troubleshooting
 
-### ❌ 503 — Cannot reach Groq API
+### ❌ 503 — Cannot reach Google Gemini API
 
-- Check `GROQ_API_KEY` is set correctly in the platform dashboard.
-- Verify the key starts with `gsk_` and is from [console.groq.com](https://console.groq.com).
+- Check `GOOGLE_API_KEY` is set correctly in the platform dashboard.
+- Verify the key starts with `AIzaSy` and is from [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
 - Check platform outbound internet access (some free tiers block external APIs).
 
-### ❌ 422 — GROQ_API_KEY validation failed at startup
+### ❌ 422 — GOOGLE_API_KEY validation failed at startup
 
-- The key is set but looks wrong (doesn't start with `gsk_`).
-- Regenerate the key at console.groq.com → API Keys.
+- The key is set but looks wrong (doesn't start with `AIzaSy`).
+- Regenerate the key at aistudio.google.com/app/apikey → API Keys.
 
 ### ❌ 500 — LLM_GENERATION_ERROR: rate limit
 
-- On the free Groq tier: 30 requests/minute for most models.
-- Switch to `llama-3.1-8b-instant` which has higher free-tier limits.
+- On the free Gemini tier: 30 requests/minute for most models.
+- Switch to `gemini-1.5-flash` which has higher free-tier limits.
 - Or wait 60 seconds between requests.
 
 ### ❌ Render cold start timeout

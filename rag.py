@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.documents import Document
@@ -50,7 +50,7 @@ elif _ROOT_ENV.exists():
 
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = "models/gemini-embedding-2"
 LLM_MODEL_NAME       = os.getenv("MODEL_NAME", os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant"))
 GROQ_API_KEY         = os.getenv("GROQ_API_KEY", "")
 CHUNK_SIZE           = 1000
@@ -90,7 +90,7 @@ Provide a clear, accurate answer based solely on the transcript above."""
 
 # ── Singleton embedding model ──────────────────────────────────────────────────
 # Loaded once at module import time — reused across all build_vector_store() calls.
-_embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+_embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL_NAME, google_api_key=GROQ_API_KEY)
 
 
 # ── URL / ID helpers ───────────────────────────────────────────────────────────

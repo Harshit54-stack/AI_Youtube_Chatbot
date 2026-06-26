@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     """
     FastAPI lifespan context manager.
 
-    startup  : Load the HuggingFace embedding model into memory once.
+    startup  : Load the Google Generative AI embedding model into memory once.
     shutdown : Log graceful shutdown (add cleanup here if needed later).
     """
     # ── Startup ───────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ app = FastAPI(
     description=(
         "A production-ready Retrieval-Augmented Generation API that answers "
         "questions about YouTube videos using their transcripts.\n\n"
-        "**Stack**: LangChain · FAISS · HuggingFace Embeddings · Google Gemini · FastAPI\n\n"
+        "**Stack**: LangChain · FAISS · Google Generative AI Embeddings · Google Gemini · FastAPI\n\n"
         "**LLM Provider**: [Google Gemini](https://ai.google.dev) — state-of-the-art multimodal LLM, "
         "no local GPU required, cloud-deployable.\n\n"
         "**Usage**: POST `/ask` with a YouTube URL and a question.\n\n"
