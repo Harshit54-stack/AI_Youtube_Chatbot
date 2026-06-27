@@ -8,15 +8,16 @@ without any try/except clutter in the route handlers.
 Exception Tree
 --------------
 RAGBaseError (500)
-├── InvalidVideoURLError  (422) — bad URL or video ID format
+├── InvalidVideoURLError    (422) — bad URL or video ID format
 ├── TranscriptDisabledError (422) — video owner disabled captions
-├── TranscriptNotFoundError (404) — no English transcript found
-├── VectorStoreError (500) — FAISS build or retrieval failure
-├── LLMConnectionError (503) — cannot reach Groq API
+├── TranscriptNotFoundError (404) — no transcript found for the video
+├── SupadataAPIError        (502) — Supadata API unreachable or returned an error
+├── VectorStoreError        (500) — FAISS build or retrieval failure
+├── LLMConnectionError      (503) — cannot reach the Google Gemini API
 │   ├── network error
 │   ├── invalid API key
 │   └── timeout
-└── LLMGenerationError (500) — Groq returned an error response
+└── LLMGenerationError      (500) — Gemini returned an error response
     ├── rate limit exceeded
     ├── model not found
     ├── context window exceeded
@@ -65,12 +66,29 @@ class TranscriptDisabledError(RAGBaseError):
 
 class TranscriptNotFoundError(RAGBaseError):
     """
-    Raised when no English transcript is available for the video.
+    Raised when no transcript is available for the video via Supadata.
 
-    HTTP 404 — the resource (English transcript) was not found.
+    HTTP 404 — the resource (transcript) was not found.
     """
     http_status = 404
     error_code  = "TRANSCRIPT_NOT_FOUND"
+
+
+class SupadataAPIError(RAGBaseError):
+    """
+    Raised when the Supadata Transcript API is unreachable or returns an
+    unexpected error (non-404 / non-400 failure).
+
+    Covers:
+    - Network errors (no internet, DNS failure, connection refused)
+    - HTTP timeout (the request exceeded the configured timeout)
+    - Supadata service errors (5xx responses)
+    - Unexpected API response format
+
+    HTTP 502 Bad Gateway — the upstream transcript service failed.
+    """
+    http_status = 502
+    error_code  = "SUPADATA_API_ERROR"
 
 
 # ── Vector store errors ────────────────────────────────────────────────────────
@@ -89,13 +107,13 @@ class VectorStoreError(RAGBaseError):
 
 class LLMConnectionError(RAGBaseError):
     """
-    Raised when the backend cannot reach the Groq API.
+    Raised when the backend cannot reach the Google Gemini API.
 
     Covers:
     - Network errors (no internet, DNS failure)
     - Invalid or expired API key (401 Unauthorized)
     - HTTP timeout (the request exceeded LLM_TIMEOUT seconds)
-    - Groq service unavailable (503)
+    - Gemini service unavailable (503)
 
     HTTP 503 Service Unavailable — the upstream LLM service is unreachable.
     """
@@ -105,14 +123,14 @@ class LLMConnectionError(RAGBaseError):
 
 class LLMGenerationError(RAGBaseError):
     """
-    Raised when the Groq API is reachable but cannot generate a response.
+    Raised when the Gemini API is reachable but cannot generate a response.
 
     Covers:
     - Rate limit exceeded (429 Too Many Requests)
     - Model not found or not available
     - Context window exceeded (prompt too long)
     - Empty response returned by the LLM
-    - Any other Groq API error during generation
+    - Any other Gemini API error during generation
 
     HTTP 500 — the LLM failed to produce a usable response.
     """

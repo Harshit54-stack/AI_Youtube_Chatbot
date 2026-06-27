@@ -84,6 +84,8 @@ app = FastAPI(
         "**Stack**: LangChain · FAISS · Google Generative AI Embeddings · Google Gemini · FastAPI\n\n"
         "**LLM Provider**: [Google Gemini](https://ai.google.dev) — state-of-the-art multimodal LLM, "
         "no local GPU required, cloud-deployable.\n\n"
+        "**Transcript Provider**: [Supadata](https://supadata.ai) — managed transcript API that works "
+        "reliably on cloud platforms (Render, Railway) without YouTube IP-blocking.\n\n"
         "**Usage**: POST `/ask` with a YouTube URL and a question.\n\n"
         "**Models**: Use `GET /models` to list all supported Gemini models."
     ),
@@ -284,9 +286,11 @@ async def list_models():
     summary="Ask questions about YouTube videos using their transcripts.",
     description=(
         "Supply a YouTube video URL (or bare video ID) and a natural-language "
-        "question. The API fetches the transcript, builds a semantic index, "
+        "question. The API fetches the transcript via **Supadata API** (cloud-friendly, "
+        "works on Render without YouTube IP-blocking), builds a semantic index, "
         "retrieves the most relevant chunks, and generates a grounded answer "
         "using Google Gemini.\n\n"
+        "**Transcript retrieved using Supadata API.**\n\n"
         "The `sources` field in the response contains the exact transcript "
         "excerpts that grounded the answer.\n\n"
         "**Anti-hallucination**: The LLM is strictly instructed to answer only "

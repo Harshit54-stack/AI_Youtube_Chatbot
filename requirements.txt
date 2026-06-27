@@ -6,15 +6,13 @@
 #
 # Install: pip install -r requirements.txt
 #
-# NOTE: langchain-groq / groq have been REMOVED — replaced by Google Gemini.
+# NOTE: youtube-transcript-api has been REMOVED — replaced by Supadata REST API.
+#       Supadata avoids YouTube IP-blocking on cloud platforms (Render, Railway).
 #       No local GPU or Groq account required. Use Google AI Studio API key.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Streamlit UI (prototype) ───────────────────────────────────────────────────
 streamlit>=1.35.0
-
-# ── YouTube transcript fetching ───────────────────────────────────────────────
-youtube-transcript-api>=0.6.2
 
 # ── LangChain ecosystem ───────────────────────────────────────────────────────
 langchain>=0.2.0
@@ -22,17 +20,15 @@ langchain-core>=0.2.0
 langchain-community>=0.2.0
 langchain-text-splitters>=0.2.0
 
-# ── Google Gemini LLM (replaces langchain-groq) ───────────────────────────────
+# ── Google Gemini LLM ─────────────────────────────────────────────────────────
 # langchain-google-genai: LangChain-native Gemini integration (ChatGoogleGenerativeAI)
 langchain-google-genai>=2.0.0
 
 # ── Vector store ──────────────────────────────────────────────────────────────
 faiss-cpu>=1.8.0
 
-# ── Embedding model (local, no API key needed) ────────────────────────────────
-
-
-# ── HTTP client (used by langchain-google-genai internally) ───────────────────
+# ── HTTP client (Supadata API + langchain-google-genai internally) ─────────────
+# Used to call the Supadata Transcript REST API to fetch YouTube transcripts.
 httpx>=0.27.0
 
 # ── Environment variables ─────────────────────────────────────────────────────

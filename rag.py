@@ -3,22 +3,23 @@ rag.py — Core RAG pipeline for the YouTube RAG Chatbot (Streamlit prototype).
 
 Pipeline stages
 ---------------
-1. Transcript ingestion  : YouTubeTranscriptApi
+1. Transcript ingestion  : Supadata Transcript API (cloud-friendly, no IP-blocking)
 2. Text splitting        : RecursiveCharacterTextSplitter
-3. Embedding generation  : HuggingFace all-MiniLM-L6-v2 (singleton)
+3. Embedding generation  : Google Generative AI Embeddings (gemini-embedding-2)
 4. Vector store          : FAISS
 5. Retrieval             : similarity search (top-k = 4)
 6. Augmentation          : ChatPromptTemplate (System + Human)
-7. Generation            : Groq Cloud via ChatGroq (llama-3.1-8b-instant)
+7. Generation            : Google Gemini via ChatGoogleGenerativeAI
 
 Environment variables (loaded from backend/.env or OS environment)
 ------------------------------------------------------------------
-  GROQ_API_KEY    — Required. Groq Cloud API key (get at console.groq.com).
-  MODEL_NAME      — Optional. Groq model ID. Default: llama-3.1-8b-instant.
+  GOOGLE_API_KEY    — Required. Google AI Studio API key.
+  SUPADATA_API_KEY  — Required. Supadata API key (get at dash.supadata.ai).
+  LLM_MODEL_NAME    — Optional. Gemini model ID. Default: gemini-2.5-flash.
 
 NOTE: This file powers the Streamlit prototype (app.py).
       The production FastAPI backend lives in backend/ and has its own
-      service-oriented architecture (backend/services/llm_service.py).
+      service-oriented architecture (backend/services/transcript_service.py).
 """
 
 import os
@@ -27,12 +28,11 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from typing import List, Tuple
 
+import httpx
 from dotenv import load_dotenv
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_groq import ChatGroq
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.documents import Document
 
@@ -51,11 +51,15 @@ elif _ROOT_ENV.exists():
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 EMBEDDING_MODEL_NAME = "models/gemini-embedding-2"
-LLM_MODEL_NAME       = os.getenv("MODEL_NAME", os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant"))
-GROQ_API_KEY         = os.getenv("GROQ_API_KEY", "")
+LLM_MODEL_NAME       = os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash")
+GOOGLE_API_KEY       = os.getenv("GOOGLE_API_KEY", "")
+SUPADATA_API_KEY     = os.getenv("SUPADATA_API_KEY", "")
 CHUNK_SIZE           = 1000
 CHUNK_OVERLAP        = 200
 RETRIEVER_K          = 4   # number of chunks to retrieve per question
+
+# Supadata REST endpoint
+_SUPADATA_URL        = "https://api.supadata.ai/v1/transcript"
 
 
 # ── Prompt Engineering ─────────────────────────────────────────────────────────
@@ -90,7 +94,7 @@ Provide a clear, accurate answer based solely on the transcript above."""
 
 # ── Singleton embedding model ──────────────────────────────────────────────────
 # Loaded once at module import time — reused across all build_vector_store() calls.
-_embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL_NAME, google_api_key=GROQ_API_KEY)
+_embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL_NAME, google_api_key=GOOGLE_API_KEY)
 
 
 # ── URL / ID helpers ───────────────────────────────────────────────────────────
@@ -159,9 +163,9 @@ def _is_valid_video_id(video_id: str) -> bool:
 
 def build_vector_store(video_id: str) -> FAISS:
     """
-    Fetch the YouTube transcript for *video_id*, split it into chunks,
-    embed each chunk with HuggingFace all-MiniLM-L6-v2, and return a
-    FAISS vector store.
+    Fetch the YouTube transcript for *video_id* via Supadata API, split it
+    into chunks, embed each chunk with Google Generative AI Embeddings, and
+    return a FAISS vector store.
 
     Parameters
     ----------
@@ -175,20 +179,50 @@ def build_vector_store(video_id: str) -> FAISS:
 
     Raises
     ------
-    TranscriptsDisabled
-        If the video owner has disabled captions entirely.
-    NoTranscriptFound
-        If no English transcript is available for this video.
     ValueError
-        Propagated from the transcript API for completely invalid IDs.
+        If SUPADATA_API_KEY is not set or the video URL is invalid.
+    RuntimeError
+        If Supadata returns an error or an empty transcript.
     """
+    if not SUPADATA_API_KEY or SUPADATA_API_KEY in ("your_supadata_api_key_here", ""):
+        raise ValueError(
+            "SUPADATA_API_KEY is not set. "
+            "Add it to backend/.env or set the SUPADATA_API_KEY environment variable. "
+            "Get a free key at https://dash.supadata.ai"
+        )
 
-    # ── Stage 1a : Transcript ingestion ──────────────────────────────────
-    ytt_api = YouTubeTranscriptApi()
-    transcript_list = ytt_api.fetch(video_id, languages=["en"])
+    # ── Stage 1a : Transcript ingestion via Supadata ──────────────────────
+    canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+    response = httpx.get(
+        _SUPADATA_URL,
+        params={"url": canonical_url},
+        headers={"x-api-key": SUPADATA_API_KEY},
+        timeout=30.0,
+    )
 
-    # Flatten snippet objects into a single plain-text string
-    transcript = " ".join(chunk.text for chunk in transcript_list)
+    if response.status_code == 404:
+        raise RuntimeError(
+            f"No transcript found for video '{video_id}'. "
+            "The video may not have captions or may be private."
+        )
+    if not response.is_success:
+        raise RuntimeError(
+            f"Supadata API error (HTTP {response.status_code}) for video '{video_id}'. "
+            "Please try again later."
+        )
+
+    data = response.json()
+    raw_content = data.get("content", "")
+    if isinstance(raw_content, list):
+        parts = [item.get("text", "") if isinstance(item, dict) else str(item) for item in raw_content]
+        transcript = " ".join(parts).strip()
+    else:
+        transcript = str(raw_content).strip()
+
+    if not transcript:
+        raise RuntimeError(
+            f"Supadata returned an empty transcript for video '{video_id}'."
+        )
 
     # ── Stage 1b : Text splitting ─────────────────────────────────────────
     splitter = RecursiveCharacterTextSplitter(
@@ -212,7 +246,7 @@ def get_answer(
 ) -> Tuple[str, List[Document]]:
     """
     Retrieve the most relevant transcript chunks and generate a grounded
-    answer using the Groq Cloud API (ChatGroq).
+    answer using the Google Gemini API.
 
     Parameters
     ----------
@@ -229,21 +263,20 @@ def get_answer(
     Raises
     ------
     EnvironmentError
-        If GROQ_API_KEY is not set in the environment.
+        If GOOGLE_API_KEY is not set in the environment.
     RuntimeError
-        If the Groq API returns an empty or unexpected response.
+        If the Gemini API returns an empty or unexpected response.
     Exception
         Propagated for network errors, rate limits, or API failures.
     """
 
     # ── Validate API key ──────────────────────────────────────────────────
-    # Re-read from environment on every call so .env changes take effect immediately.
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key or api_key in ("your_groq_api_key_here", ""):
+    api_key = os.getenv("GOOGLE_API_KEY", "")
+    if not api_key or api_key in ("your_google_api_key_here", ""):
         raise EnvironmentError(
-            "GROQ_API_KEY is not set. "
-            "Add it to backend/.env or set the GROQ_API_KEY environment variable. "
-            "Get a free key at https://console.groq.com"
+            "GOOGLE_API_KEY is not set. "
+            "Add it to backend/.env or set the GOOGLE_API_KEY environment variable. "
+            "Get a free key at https://aistudio.google.com/app/apikey"
         )
 
     # ── Stage 5 : Retrieval ───────────────────────────────────────────────
@@ -264,8 +297,7 @@ def get_answer(
     else:
         context_text = "[No transcript context was retrieved for this question.]"
 
-    # Build System + Human message list (better instruction-following than
-    # a single PromptTemplate on chat-tuned models like LLaMA 3 and Gemma).
+    # Build System + Human message list.
     messages = [
         SystemMessage(content=_SYSTEM_PROMPT),
         HumanMessage(content=_HUMAN_TEMPLATE.format(
@@ -274,10 +306,10 @@ def get_answer(
         )),
     ]
 
-    # ── Stage 7 : Generation via Groq ─────────────────────────────────────
-    llm = ChatGroq(
+    # ── Stage 7 : Generation via Google Gemini ────────────────────────────
+    llm = ChatGoogleGenerativeAI(
         model=LLM_MODEL_NAME,
-        api_key=api_key,
+        google_api_key=api_key,
         temperature=0.0,
         max_tokens=1024,
     )
@@ -286,7 +318,7 @@ def get_answer(
     answer: str = getattr(response, "content", "").strip()
     if not answer:
         raise RuntimeError(
-            "Groq returned an empty response. "
+            "Gemini returned an empty response. "
             "Try rephrasing the question or switching models."
         )
 

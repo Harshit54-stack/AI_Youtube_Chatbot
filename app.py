@@ -10,14 +10,13 @@ UI features
 * Graceful, descriptive error handling for all known failure modes.
 * Vector store cached per video ID — no redundant re-embedding.
 
-LLM Provider: Groq Cloud (api.groq.com) — no local GPU required.
-Get a free API key at https://console.groq.com
+LLM Provider: Google Gemini (ai.google.dev) — no local GPU required.
+Transcript Provider: Supadata API (supadata.ai) — works on cloud platforms.
 """
 
 import streamlit as st
-from youtube_transcript_api import TranscriptsDisabled, NoTranscriptFound
 
-from rag import build_vector_store, get_answer, extract_video_id, LLM_MODEL_NAME, GROQ_API_KEY
+from rag import build_vector_store, get_answer, extract_video_id, LLM_MODEL_NAME, GOOGLE_API_KEY, SUPADATA_API_KEY
 
 
 # ── Page configuration ─────────────────────────────────────────────────────────
@@ -159,8 +158,8 @@ def render_sidebar() -> None:
         st.divider()
 
         # ── API Key & Model status ─────────────────────────────────────────
-        st.markdown("### ⚡ Groq Status")
-        if GROQ_API_KEY and GROQ_API_KEY not in ("your_groq_api_key_here", ""):
+        st.markdown("### ⚡ Gemini Status")
+        if GOOGLE_API_KEY and GOOGLE_API_KEY not in ("your_google_api_key_here", ""):
             st.success(
                 f"**API Key:** configured ✅\n\n"
                 f"**Model:** `{LLM_MODEL_NAME}`",
@@ -168,10 +167,18 @@ def render_sidebar() -> None:
             )
         else:
             st.error(
-                "**GROQ_API_KEY** is not set.\n\n"
+                "**GOOGLE_API_KEY** is not set.\n\n"
                 "Add it to `backend/.env`:\n\n"
-                "```\nGROQ_API_KEY=gsk_xxx...\n```\n\n"
-                "Get a free key at [console.groq.com](https://console.groq.com)",
+                "```\nGOOGLE_API_KEY=AIzaSy...\n```\n\n"
+                "Get a free key at [aistudio.google.com](https://aistudio.google.com/app/apikey)",
+                icon="🔑",
+            )
+        if not SUPADATA_API_KEY or SUPADATA_API_KEY in ("your_supadata_api_key_here", ""):
+            st.error(
+                "**SUPADATA_API_KEY** is not set.\n\n"
+                "Add it to `backend/.env`:\n\n"
+                "```\nSUPADATA_API_KEY=your_key...\n```\n\n"
+                "Get a free key at [dash.supadata.ai](https://dash.supadata.ai)",
                 icon="🔑",
             )
         st.divider()
@@ -190,10 +197,11 @@ render_sidebar()
 
 
 # ── Main header ────────────────────────────────────────────────────────────────
-st.markdown("## 🎬 YouTube RAG Chatbot")
+st.markdown("## 🎥 YouTube RAG Chatbot")
 st.markdown(
     "Enter a YouTube URL or Video ID, then ask questions about the video content. "
-    "Answers are grounded in the video transcript — powered by **Groq Cloud** ⚡"
+    "Answers are grounded in the video transcript — powered by **Google Gemini** ⚡ "
+    "with transcripts from **Supadata API**."
 )
 st.divider()
 
@@ -252,64 +260,31 @@ def render_chat_history() -> None:
             st.markdown(entry["question"])
 
         # ── Assistant bubble ──────────────────────────────────────────────
-        with st.chat_message("assistant"):
-            st.markdown(entry["answer"])
-
-            # ── Retrieved context expander ────────────────────────────────
-            if entry.get("docs"):
-                with st.expander("📄 Retrieved Context", expanded=False):
-                    for idx, doc in enumerate(entry["docs"], start=1):
-                        st.markdown(
-                            f"**Chunk {idx}**\n\n{doc.page_content}",
-                        )
-                        if idx < len(entry["docs"]):
-                            st.divider()
-
-
-render_chat_history()
-
-
-# ── Question input ─────────────────────────────────────────────────────────────
-user_question = st.chat_input(
-    placeholder="Ask a question about this video… (e.g. What is the main topic?)",
-    disabled=(not resolved_video_id),   # greyed out until a valid video ID is set
-)
-
-
-# ── Processing pipeline ────────────────────────────────────────────────────────
-def process_question(video_id: str, question: str) -> None:
-    """
-    Orchestrate the full RAG pipeline for a single question:
-    1. Build (or retrieve cached) vector store.
-    2. Run retrieval + Groq LLM generation.
-    3. Append result to chat history.
-    4. Trigger a Streamlit rerun to refresh the chat display.
-
-    Parameters
-    ----------
-    video_id : str  — bare 11-char YouTube video ID.
-    question : str  — the user's natural-language question.
-    """
-
-    # ── Step 1 : Vector store ─────────────────────────────────────────────
-    with st.spinner("⚙️ Fetching transcript and building vector store…"):
+      # ── Step 1 : Vector store ───────────────────────────────────────────────
+    with st.spinner("⚙️ Fetching transcript via Supadata and building vector store…"):
         try:
             vector_store = cached_vector_store(video_id)
-        except TranscriptsDisabled:
-            st.error(
-                "❌ **Transcripts are disabled** for this video.\n\n"
-                "The video creator has turned off captions — "
-                "this app cannot process it without a transcript.",
-                icon="🚫",
-            )
-            return
-        except NoTranscriptFound:
-            st.error(
-                "❌ **No English transcript found** for this video.\n\n"
-                "Try a video that has English captions enabled. "
-                "You can check on YouTube under *Settings → Subtitles*.",
-                icon="🚫",
-            )
+        except (ValueError, RuntimeError) as exc:
+            err = str(exc)
+            if "no transcript" in err.lower() or "empty transcript" in err.lower():
+                st.error(
+                    "❌ **No transcript found** for this video.\n\n"
+                    "The video may not have captions, may be private, or may be unavailable. "
+                    "Try a different public YouTube video with captions enabled.",
+                    icon="🚫",
+                )
+            elif "supadata" in err.lower() or "api" in err.lower():
+                st.error(
+                    f"❌ **Supadata API error:**\n\n`{exc}`\n\n"
+                    "Please check your SUPADATA_API_KEY and try again.",
+                    icon="🚫",
+                )
+            else:
+                st.error(
+                    f"❌ **Could not fetch the transcript:**\n\n`{exc}`\n\n"
+                    "Double-check the video ID and make sure the video is publicly accessible.",
+                    icon="🚫",
+                )
             return
         except Exception as exc:
             st.error(
@@ -319,8 +294,8 @@ def process_question(video_id: str, question: str) -> None:
             )
             return
 
-    # ── Step 2 : Answer generation via Groq ──────────────────────────────
-    with st.spinner(f"⚡ Generating answer with Groq `{LLM_MODEL_NAME}`…"):
+    # ── Step 2 : Answer generation via Gemini ─────────────────────────────
+    with st.spinner(f"⚡ Generating answer with Gemini `{LLM_MODEL_NAME}`…"):
         try:
             answer, retrieved_docs = get_answer(question, vector_store)
         except EnvironmentError as exc:
@@ -331,26 +306,26 @@ def process_question(video_id: str, question: str) -> None:
             return
         except Exception as exc:
             error_msg = str(exc)
-            # Provide specific guidance for common Groq errors
+            # Provide specific guidance for common Gemini errors
             if "rate_limit" in error_msg.lower() or "429" in error_msg:
                 st.error(
-                    "❌ **Groq Rate Limit Exceeded.**\n\n"
+                    "❌ **Gemini Rate Limit Exceeded.**\n\n"
                     "Wait 60 seconds, then try again. "
-                    "Consider switching to `llama-3.1-8b-instant` for higher rate limits.",
+                    "Consider switching to `gemini-2.5-flash` for higher rate limits.",
                     icon="⏳",
                 )
-            elif "invalid_api_key" in error_msg.lower() or "401" in error_msg:
+            elif "invalid" in error_msg.lower() and "key" in error_msg.lower() or "401" in error_msg:
                 st.error(
-                    "❌ **Invalid Groq API Key.**\n\n"
-                    "Check `GROQ_API_KEY` in `backend/.env`. "
-                    "Get a valid key at [console.groq.com](https://console.groq.com)",
+                    "❌ **Invalid Google API Key.**\n\n"
+                    "Check `GOOGLE_API_KEY` in `backend/.env`. "
+                    "Get a valid key at [aistudio.google.com](https://aistudio.google.com/app/apikey)",
                     icon="🔑",
                 )
             elif any(kw in error_msg.lower() for kw in ("connect", "network", "timeout")):
                 st.error(
-                    "❌ **Cannot reach Groq API.**\n\n"
+                    "❌ **Cannot reach Gemini API.**\n\n"
                     "Check your internet connection. "
-                    "The Groq API endpoint is `api.groq.com`.",
+                    "The Gemini API endpoint is `generativelanguage.googleapis.com`.",
                     icon="🌐",
                 )
             else:

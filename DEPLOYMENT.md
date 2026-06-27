@@ -1,6 +1,7 @@
 # 🚀 Deployment Guide — YouTube RAG Chatbot
 
 Step-by-step deployment instructions for Render, Railway, and Docker.
+Both the **FastAPI backend** (Render) and the **React frontend** (Vercel) are covered.
 
 ---
 
@@ -10,9 +11,10 @@ Step-by-step deployment instructions for Render, Railway, and Docker.
 2. [Render (Recommended)](#2-render-recommended)
 3. [Railway](#3-railway)
 4. [Docker (Self-hosted)](#4-docker-self-hosted)
-5. [Environment Variables Reference](#5-environment-variables-reference)
-6. [Post-Deployment Checklist](#6-post-deployment-checklist)
-7. [Troubleshooting](#7-troubleshooting)
+5. [Vercel (Frontend)](#5-vercel-frontend)
+6. [Environment Variables Reference](#6-environment-variables-reference)
+7. [Post-Deployment Checklist](#7-post-deployment-checklist)
+8. [Troubleshooting](#8-troubleshooting)
 
 ---
 
@@ -21,8 +23,16 @@ Step-by-step deployment instructions for Render, Railway, and Docker.
 Before deploying, ensure you have:
 
 - [ ] A **Google Gemini API key** — free at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+- [ ] A **Supadata API key** — free at [dash.supadata.ai](https://dash.supadata.ai)
 - [ ] The project pushed to a **GitHub repository**
 - [ ] Python 3.11+ (for local testing only)
+
+> **Why Supadata?**
+> The `youtube-transcript-api` library scrapes YouTube directly and is blocked
+> by YouTube when running from cloud provider IP ranges (Render, Railway, Heroku, etc.).
+> Supadata is a managed API that routes transcript requests through its own
+> infrastructure, eliminating the IP-blocking problem and providing a stable,
+> versioned REST contract that works on **any** cloud platform.
 
 ---
 
@@ -39,15 +49,19 @@ configured in the repo root.
 4. Render will auto-detect `render.yaml` and pre-fill all settings.
 5. Click **Apply**.
 
-### 2b. Set the API key (required)
+### 2b. Set the API keys (required)
 
 After the service is created:
 
 1. Go to your service in the Render dashboard.
-2. Click **Environment** tab.
-3. Add a **new secret environment variable**:
-   - Key: `GOOGLE_API_KEY`
-   - Value: `AIzaSy......` (your key from aistudio.google.com/app/apikey)
+2. Click the **Environment** tab.
+3. Add the following **secret environment variables**:
+
+   | Key | Value |
+   |---|---|
+   | `GOOGLE_API_KEY` | `AIzaSy......` (from [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)) |
+   | `SUPADATA_API_KEY` | your key from [dash.supadata.ai](https://dash.supadata.ai) |
+
 4. Click **Save Changes** → the service will automatically redeploy.
 
 ### 2c. Verify deployment
@@ -65,7 +79,7 @@ Expected response:
   "version": "3.0.0",
   "environment": "production",
   "llm_provider": "Google Gemini",
-  "llm_model": "gemini-1.5-flash"
+  "llm_model": "gemini-2.5-flash"
 }
 ```
 
@@ -131,9 +145,10 @@ railway up
 ```bash
 # Required
 railway variables set GOOGLE_API_KEY=AIzaSy......
+railway variables set SUPADATA_API_KEY=your_supadata_key
 
 # Optional — configure model
-railway variables set LLM_MODEL_NAME=gemini-1.5-flash
+railway variables set LLM_MODEL_NAME=gemini-2.5-flash
 railway variables set LLM_TEMPERATURE=0.0
 railway variables set LLM_MAX_TOKENS=1024
 railway variables set LLM_TIMEOUT=60
@@ -190,7 +205,8 @@ docker run -d \
   --name yt-rag-chatbot \
   -p 8000:8000 \
   -e GOOGLE_API_KEY=AIzaSy...... \
-  -e LLM_MODEL_NAME=gemini-1.5-flash \
+  -e SUPADATA_API_KEY=your_supadata_key \
+  -e LLM_MODEL_NAME=gemini-2.5-flash \
   -e APP_ENV=production \
   -e LOG_LEVEL=INFO \
   --restart unless-stopped \
@@ -257,22 +273,53 @@ docker push yourusername/yt-rag-chatbot:latest
 
 ---
 
-## 5. Environment Variables Reference
+## 5. Vercel (Frontend)
+
+The React + Vite frontend deploys to Vercel with minimal configuration.
+
+### 5a. Deploy
+
+1. Push your repo to GitHub.
+2. Go to [vercel.com](https://vercel.com) → **New Project**.
+3. Import the `AI_Youtube_Chatbot` repo.
+4. Set the **Root Directory** to `frontend`.
+5. Vercel auto-detects Vite — no build command changes needed.
+
+### 5b. Set the backend URL
+
+In the Vercel dashboard → your project → **Settings** → **Environment Variables**:
+
+| Key | Value |
+|---|---|
+| `VITE_API_URL` | `https://your-service.onrender.com` |
+
+### 5c. Update CORS on the backend
+
+Add your Vercel URL to `CORS_ORIGINS` in the Render dashboard:
+
+```
+CORS_ORIGINS=["https://your-app.vercel.app","http://localhost:5173"]
+```
+
+---
+
+## 6. Environment Variables Reference
 
 Set these in your deployment platform's dashboard or in `backend/.env`:
 
 ```env
 # ── REQUIRED ───────────────────────────────────────────────────────────────────
-GOOGLE_API_KEY=AIzaSy...
+GOOGLE_API_KEY=AIzaSy...          # Google Gemini LLM + Embeddings
+SUPADATA_API_KEY=your_key_here    # Supadata Transcript API (replaces youtube-transcript-api)
 
 # ── LLM Configuration ──────────────────────────────────────────────────────────
-LLM_MODEL_NAME=gemini-1.5-flash    # fastest; use gemini-1.5-pro for quality
-LLM_TEMPERATURE=0.0                     # 0 = deterministic (best for RAG)
-LLM_MAX_TOKENS=1024                     # max tokens in response
-LLM_TIMEOUT=60                          # seconds before timeout
-LLM_MAX_RETRIES=2                       # auto-retries on transient errors
+LLM_MODEL_NAME=gemini-2.5-flash   # fastest; use gemini-2.5-pro for quality
+LLM_TEMPERATURE=0.0               # 0 = deterministic (best for RAG)
+LLM_MAX_TOKENS=1024               # max tokens in response
+LLM_TIMEOUT=60                    # seconds before timeout
+LLM_MAX_RETRIES=2                 # auto-retries on transient errors
 
-# ── Embeddings (Google API, uses same API key) ──────────────────────────────────────
+# ── Embeddings (Google API, uses same API key) ──────────────────────────────────
 EMBEDDING_MODEL_NAME=models/gemini-embedding-2
 
 # ── RAG Pipeline ───────────────────────────────────────────────────────────────
@@ -290,7 +337,7 @@ PYTHONUNBUFFERED=1
 
 ---
 
-## 6. Post-Deployment Checklist
+## 7. Post-Deployment Checklist
 
 After deploying, verify each item:
 
@@ -300,6 +347,7 @@ After deploying, verify each item:
 - [ ] Swagger UI loads at `/docs`
 - [ ] Logs show requests with request IDs and latency
 - [ ] `GOOGLE_API_KEY` is set in the platform dashboard (not in code)
+- [ ] `SUPADATA_API_KEY` is set in the platform dashboard (not in code)
 - [ ] CORS origins include your frontend URL
 - [ ] `APP_ENV` is set to `production`
 
@@ -316,7 +364,20 @@ curl -X POST https://your-service.onrender.com/ask \
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
+
+### ❌ 502 — SUPADATA_API_ERROR
+
+- Check `SUPADATA_API_KEY` is set correctly in the platform dashboard.
+- Verify the key is valid at [dash.supadata.ai](https://dash.supadata.ai).
+- The error detail will specify whether it was a timeout, auth failure, or network error.
+- If the error is `"API key invalid or unauthorised"`, regenerate your key at dash.supadata.ai.
+
+### ❌ 404 — TRANSCRIPT_NOT_FOUND
+
+- The video may not have captions available.
+- The video may be private or age-restricted.
+- Try a different public YouTube video with captions enabled.
 
 ### ❌ 503 — Cannot reach Google Gemini API
 
@@ -324,15 +385,20 @@ curl -X POST https://your-service.onrender.com/ask \
 - Verify the key starts with `AIzaSy` and is from [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
 - Check platform outbound internet access (some free tiers block external APIs).
 
-### ❌ 422 — GOOGLE_API_KEY validation failed at startup
+### ❌ Startup failure — SUPADATA_API_KEY validation error
 
-- The key is set but looks wrong (doesn't start with `AIzaSy`).
-- Regenerate the key at aistudio.google.com/app/apikey → API Keys.
+- The server will refuse to start if `SUPADATA_API_KEY` is missing or set to the placeholder value.
+- Set the real key in the platform dashboard and redeploy.
+
+### ❌ Startup failure — GOOGLE_API_KEY validation error
+
+- The key is missing or set to the placeholder `your_google_api_key_here`.
+- Set the real key in the platform dashboard and redeploy.
 
 ### ❌ 500 — LLM_GENERATION_ERROR: rate limit
 
 - On the free Gemini tier: 30 requests/minute for most models.
-- Switch to `gemini-1.5-flash` which has higher free-tier limits.
+- Switch to `gemini-2.5-flash` which has higher free-tier limits.
 - Or wait 60 seconds between requests.
 
 ### ❌ Render cold start timeout
@@ -345,7 +411,6 @@ curl -X POST https://your-service.onrender.com/ask \
 ### ❌ Out of memory on free tier
 
 - Free Render/Railway instances have 512 MB RAM.
-- The embedding model (`all-MiniLM-L6-v2`) uses ~90 MB.
 - Each FAISS index uses ~10-50 MB depending on video length.
 - Reduce `VECTOR_STORE_CACHE_SIZE` to `5` if you hit OOM errors.
 

@@ -64,7 +64,7 @@ class Settings(BaseSettings):
         description="Google AI Studio API key. Get one at https://aistudio.google.com/app/apikey",
     )
     LLM_MODEL_NAME: str = Field(
-        default="gemini-2.5-flash",    # ← CHANGED: was llama-3.1-8b-instant (Groq)
+        default="gemini-2.5-flash",
         description=(
             "Gemini model ID. Recommended options:\n"
             "  gemini-2.5-flash  (best balance — default)\n"
@@ -96,6 +96,15 @@ class Settings(BaseSettings):
         ge=0,
         le=5,
         description="Number of automatic retries on transient Gemini errors.",
+    )
+
+    # ── Supadata Transcript API ────────────────────────────────────────────────
+    SUPADATA_API_KEY: str = Field(
+        ...,                           # required — no default
+        description=(
+            "Supadata API key for YouTube transcript fetching. "
+            "Get a free key at https://dash.supadata.ai"
+        ),
     )
 
     # ── Embeddings ────────────────────────────────────────────────────────────
@@ -162,6 +171,18 @@ class Settings(BaseSettings):
                 "GOOGLE_API_KEY is not set. "
                 "Add it to backend/.env or set the environment variable. "
                 "Get a free key at https://aistudio.google.com/app/apikey"
+            )
+        return v
+
+    @field_validator("SUPADATA_API_KEY")
+    @classmethod
+    def supadata_api_key_must_not_be_placeholder(cls, v: str) -> str:
+        """Reject the placeholder so devs get a clear startup error."""
+        if not v or v.strip() in ("your_supadata_api_key_here", ""):
+            raise ValueError(
+                "SUPADATA_API_KEY is not set. "
+                "Add it to backend/.env or set the environment variable. "
+                "Get a free key at https://dash.supadata.ai"
             )
         return v
 

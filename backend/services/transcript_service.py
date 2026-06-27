@@ -4,33 +4,46 @@ transcript_service.py — YouTube transcript fetching and text splitting.
 Responsibilities
 ----------------
 1. Parse / validate YouTube URLs and extract bare video IDs.
-2. Fetch the English transcript via YouTubeTranscriptApi.
+2. Fetch the transcript via the Supadata Transcript API (cloud-friendly,
+   works on Render and other cloud providers without IP-blocking issues).
 3. Split the raw transcript text into overlapping chunks (LangChain Documents).
 
+Why Supadata instead of youtube-transcript-api?
+-----------------------------------------------
+The open-source ``youtube-transcript-api`` library scrapes YouTube directly and
+is frequently blocked by YouTube when running on cloud provider IP ranges
+(Render, Railway, Heroku, etc.).  Supadata is a managed API that routes
+transcript requests through its own infrastructure, eliminating the IP-blocking
+problem and providing a stable, versioned REST contract.
+
 All exceptions are converted to domain-specific errors from utils.exceptions
-so that route handlers never need to import YouTube API internals.
+so that route handlers never need to import Supadata API internals.
 """
 
 import re
 from urllib.parse import urlparse, parse_qs
 from typing import List
 
-from youtube_transcript_api import (
-    YouTubeTranscriptApi,
-    TranscriptsDisabled,
-    NoTranscriptFound,
-)
+import httpx
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
+from backend.config import settings
 from backend.utils.exceptions import (
     InvalidVideoURLError,
     TranscriptDisabledError,
     TranscriptNotFoundError,
+    SupadataAPIError,
 )
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Supadata REST endpoint for YouTube transcripts
+_SUPADATA_URL = "https://api.supadata.ai/v1/transcript"
+
+# Default HTTP timeout for Supadata requests (seconds)
+_REQUEST_TIMEOUT = 30.0
 
 
 # ── URL / ID helpers ───────────────────────────────────────────────────────────
@@ -101,13 +114,155 @@ def _is_valid_video_id(video_id: str) -> bool:
 
 # ── Transcript fetching + splitting ────────────────────────────────────────────
 
+def get_transcript(video_url: str) -> str:
+    """
+    Fetch the plain-text transcript for a YouTube video via Supadata API.
+
+    Parameters
+    ----------
+    video_url : str
+        Full YouTube URL or bare video ID.
+
+    Returns
+    -------
+    str
+        Plain transcript text (all segments joined).
+
+    Raises
+    ------
+    InvalidVideoURLError
+        If the URL/ID is not a valid YouTube video reference.
+    TranscriptNotFoundError
+        If Supadata cannot find a transcript for the video (404).
+    TranscriptDisabledError
+        If the video has transcripts/captions explicitly disabled.
+    SupadataAPIError
+        If the Supadata API is unreachable, times out, or returns an
+        unexpected error.
+    """
+    # Build the canonical YouTube URL that Supadata expects
+    video_id = extract_video_id(video_url)
+    canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    logger.info("Fetching transcript via Supadata for video_id='%s'", video_id)
+
+    try:
+        response = httpx.get(
+            _SUPADATA_URL,
+            params={"url": canonical_url},
+            headers={"x-api-key": settings.SUPADATA_API_KEY},
+            timeout=_REQUEST_TIMEOUT,
+        )
+    except httpx.TimeoutException as exc:
+        logger.error(
+            "Supadata request timed out for video_id='%s': %s", video_id, exc
+        )
+        raise SupadataAPIError(
+            f"The request to Supadata timed out after {_REQUEST_TIMEOUT:.0f}s "
+            f"while fetching the transcript for video '{video_id}'. "
+            "Please try again."
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.error(
+            "Network error reaching Supadata for video_id='%s': %s", video_id, exc
+        )
+        raise SupadataAPIError(
+            f"Could not reach the Supadata API (network error): {exc}. "
+            "Check your internet connection and try again."
+        ) from exc
+
+    # ── Handle HTTP error responses ───────────────────────────────────────
+    if response.status_code == 404:
+        logger.warning(
+            "Supadata returned 404 for video_id='%s' — no transcript available.",
+            video_id,
+        )
+        raise TranscriptNotFoundError(
+            f"No transcript was found for video '{video_id}'. "
+            "The video may not have captions, or it may be private/unavailable."
+        )
+
+    if response.status_code == 400:
+        logger.warning(
+            "Supadata returned 400 for video_id='%s' — invalid request: %s",
+            video_id,
+            response.text,
+        )
+        raise InvalidVideoURLError(
+            f"Supadata rejected the video URL as invalid for video '{video_id}'. "
+            "Ensure the video is public and the URL is correct."
+        )
+
+    if response.status_code == 401 or response.status_code == 403:
+        logger.error(
+            "Supadata API key rejected (HTTP %d) for video_id='%s'.",
+            response.status_code,
+            video_id,
+        )
+        raise SupadataAPIError(
+            "The Supadata API key is invalid or unauthorised. "
+            "Check SUPADATA_API_KEY in your .env file. "
+            "Get a new key at https://dash.supadata.ai"
+        )
+
+    if not response.is_success:
+        logger.error(
+            "Supadata returned HTTP %d for video_id='%s': %s",
+            response.status_code,
+            video_id,
+            response.text[:200],
+        )
+        raise SupadataAPIError(
+            f"Supadata API returned an error (HTTP {response.status_code}) "
+            f"for video '{video_id}'. Please try again later."
+        )
+
+    # ── Parse JSON response ───────────────────────────────────────────────
+    try:
+        data = response.json()
+    except Exception as exc:
+        logger.error(
+            "Failed to parse Supadata JSON response for video_id='%s': %s",
+            video_id,
+            exc,
+        )
+        raise SupadataAPIError(
+            f"Supadata returned an unreadable response for video '{video_id}'. "
+            "Please try again."
+        ) from exc
+
+    # Supadata returns { "content": [ {"text": "..."}, ... ] } or { "content": "..." }
+    raw_content = data.get("content", "")
+    if isinstance(raw_content, list):
+        parts = [item.get("text", "") if isinstance(item, dict) else str(item) for item in raw_content]
+        transcript_text = " ".join(parts)
+    else:
+        transcript_text = str(raw_content)
+
+    if not transcript_text or not transcript_text.strip():
+        logger.warning(
+            "Supadata returned an empty transcript for video_id='%s'.", video_id
+        )
+        raise TranscriptNotFoundError(
+            f"Supadata returned an empty transcript for video '{video_id}'. "
+            "The video may not have readable captions."
+        )
+
+    logger.info(
+        "Transcript fetched via Supadata for video_id='%s' (%d characters).",
+        video_id,
+        len(transcript_text),
+    )
+    return transcript_text
+
+
 def fetch_and_split_transcript(
     video_id: str,
     chunk_size: int,
     chunk_overlap: int,
 ) -> List[Document]:
     """
-    Fetch the English transcript for *video_id* and split it into
+    Fetch the transcript for *video_id* via Supadata and split it into
     overlapping LangChain Document chunks.
 
     Parameters
@@ -123,44 +278,18 @@ def fetch_and_split_transcript(
 
     Raises
     ------
+    TranscriptNotFoundError
+        If no transcript is available for the video.
     TranscriptDisabledError
         If the video owner has disabled captions entirely.
-    TranscriptNotFoundError
-        If no English transcript is available.
     InvalidVideoURLError
-        If the transcript API rejects the video ID as invalid.
+        If the Supadata API rejects the video as invalid.
+    SupadataAPIError
+        If the Supadata API is unreachable or returns an unexpected error.
     """
-    logger.info("Fetching transcript for video_id='%s'", video_id)
-
-    try:
-        ytt_api = YouTubeTranscriptApi()
-        transcript_list = ytt_api.fetch(video_id, languages=["en"])
-    except TranscriptsDisabled:
-        logger.warning("Transcripts disabled for video_id='%s'", video_id)
-        raise TranscriptDisabledError(
-            f"The video '{video_id}' has transcripts/captions disabled. "
-            "This app requires an English transcript to answer questions."
-        )
-    except NoTranscriptFound:
-        logger.warning("No English transcript for video_id='%s'", video_id)
-        raise TranscriptNotFoundError(
-            f"No English transcript was found for video '{video_id}'. "
-            "Try a video that has English captions enabled."
-        )
-    except Exception as exc:
-        logger.error("Transcript fetch failed for video_id='%s': %s", video_id, exc)
-        raise InvalidVideoURLError(
-            f"Could not fetch transcript for video '{video_id}': {exc}. "
-            "Ensure the video is public and the ID is correct."
-        )
-
-    # Flatten snippet objects → single plain-text string
-    full_text = " ".join(snippet.text for snippet in transcript_list)
-    logger.info(
-        "Transcript fetched for video_id='%s' (%d characters).",
-        video_id,
-        len(full_text),
-    )
+    # Re-build canonical URL from the bare ID so get_transcript can use it
+    canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+    full_text = get_transcript(canonical_url)
 
     # Split into overlapping chunks
     splitter = RecursiveCharacterTextSplitter(
