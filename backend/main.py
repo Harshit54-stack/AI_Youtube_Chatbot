@@ -100,6 +100,8 @@ app = FastAPI(
 
 # ── CORS middleware ────────────────────────────────────────────────────────────
 # Allows the React frontend (running on a different port) to call this API.
+print("CORS_ORIGINS =", settings.CORS_ORIGINS)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
