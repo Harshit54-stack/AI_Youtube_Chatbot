@@ -52,7 +52,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source code
 COPY backend/ ./backend/
-COPY run.py ./run.py
+#COPY run.py ./run.py
 
 # Ensure the app directory is owned by appuser
 RUN chown -R appuser:appuser /app
