@@ -1,4 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────────────
 # render.yaml — Render.com deployment blueprint
 #
 # Deploy to Render:
@@ -8,34 +7,32 @@
 #   4. Set environment variables in the Render dashboard (or via envVarGroups)
 #
 # Docs: https://render.com/docs/blueprint-spec
-# ─────────────────────────────────────────────────────────────────────────────
 
 services:
   - type: web
     name: yt-rag-chatbot-api
     runtime: python
-    plan: free               # upgrade to "starter" for better performance
-    region: oregon           # choose closest to your users
+    plan: free               
+    region: singapur           # choose closest to your users
 
-    # ── Build configuration ────────────────────────────────────────────────
+    # ── Build configuration
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 1
 
-    # ── Auto-deploy ────────────────────────────────────────────────────────
+    # ── Auto-deploy 
     autoDeploy: true         # redeploy automatically on every git push
 
-    # ── Health check ───────────────────────────────────────────────────────
+    # ── Health check 
     healthCheckPath: /health
 
-    # ── Environment variables ──────────────────────────────────────────────
-    # IMPORTANT: Set GOOGLE_API_KEY in the Render dashboard (not here).
-    # Never commit real secrets to render.yaml.
+    # ── Environment variables
+    # IMPORTANT: Set GOOGLE_API_KEY in the Render dashboard.
     envVars:
-      # ── Required — set in Render dashboard ────────────────────────────
+      # ── Required — set in Render dashboard 
       - key: GOOGLE_API_KEY
         sync: false          # must be set manually in Render UI
 
-      # ── LLM Configuration ─────────────────────────────────────────────
+      # ── LLM Configuration 
       - key: LLM_MODEL_NAME
         value: gemini-2.5-flash
       - key: LLM_TEMPERATURE
@@ -47,11 +44,10 @@ services:
       - key: LLM_MAX_RETRIES
         value: "2"
 
-      # ── Embeddings ────────────────────────────────────────────────────
-      - key: EMBEDDING_MODEL_NAME
+      # ── Embeddings
         value: models/gemini-embedding-2
 
-      # ── RAG Pipeline ──────────────────────────────────────────────────
+      # ── RAG Pipeline
       - key: CHUNK_SIZE
         value: "1000"
       - key: CHUNK_OVERLAP
@@ -59,14 +55,14 @@ services:
       - key: RETRIEVER_K
         value: "4"
       - key: VECTOR_STORE_CACHE_SIZE
-        value: "10"          # smaller cache on free tier (512 MB RAM)
+        value: "10"          
 
-      # ── API Server ────────────────────────────────────────────────────
+      # ── API Server
       # Update CORS_ORIGINS with your React frontend URL after deploying it
       - key: CORS_ORIGINS
         value: '["https://your-react-app.vercel.app","http://localhost:5173"]'
 
-      # ── Deployment ────────────────────────────────────────────────────
+      # ── Deployment 
       - key: LOG_LEVEL
         value: INFO
       - key: APP_ENV
